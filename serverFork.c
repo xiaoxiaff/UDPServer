@@ -78,12 +78,15 @@ int main(int argc, char *argv[])
     FILE *pf;
     parseRequest(incoming_message, &header);
     printLog(false, &header);
+    
     if (header.isSyn) {
 
+  	  printf("Syn packet");
       char filename[100];
       strncpy(filename, incoming_message+HEADER_SIZE, header.dataLength);
       filename[header.dataLength] = '\0';
-
+      printf("before file");
+      printf("%s, %u",filename, header.dataLength);
       pf=fopen(filename, "r");
       if (pf==NULL) {
       	fputs ("File error",stderr);
