@@ -17,11 +17,11 @@ int parseRequest(char incoming_message[], Header* header)
 
   count length = 0;
   length |= (unsigned char)control[1];
-  printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)control[1], (length<<2));
+  //printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)control[1], (length<<2));
   header->dataLength = ((length<<2)) | ((unsigned char)control[0]>>6);
-  printf("\n parse: data length:%u %u\n", control[1], header->dataLength);
-  printf("\n char:%u %u\n", (unsigned char)control[1], (unsigned char)control[0]);
-  printf("controlbit:%u\n", control[0]);
+  //printf("\n parse: data length:%u %u\n", control[1], header->dataLength);
+  //printf("\n char:%u %u\n", (unsigned char)control[1], (unsigned char)control[0]);
+  //printf("controlbit:%u\n", control[0]);
   header->isAck = control[0] & 0x10 ? true : false;
   header->isRst = control[0] & 0x4 ? true : false;
   header->isSyn = control[0] & 0x2 ? true : false;
@@ -58,7 +58,7 @@ int generatePacket(char message[], Header* header,
 				   const char* content, const unsigned int length)
 {
   header->dataLength = length;
-  printf("data length:%u", header->dataLength);
+  //printf("data length:%u", header->dataLength);
   generateHeader(message, header);
 
   if (content)
@@ -68,7 +68,7 @@ int generatePacket(char message[], Header* header,
 
 int generateHeader(char message[], const Header* header)
 {
-  printf("generate request\n");
+  //printf("generate request\n");
 
   // set HTML version and statu code
   int offset = 0;
@@ -98,10 +98,10 @@ int generateHeader(char message[], const Header* header)
   controlBit[0] = ((header->dataLength<<6) & 0xC0);
   count length = 0;
   length |= (unsigned char)controlBit[1];
-  printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)controlBit[1], (length<<2));
+  //printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)controlBit[1], (length<<2));
   length = ((length<<2)) | ((unsigned char)controlBit[0]>>6);
-  printf("\n generate: data length:%u %u\n", length, header->dataLength);
-  printf("\n char:%u %u\n", (unsigned char)controlBit[1], (unsigned char)controlBit[0]);
+  //printf("\n generate: data length:%u %u\n", length, header->dataLength);
+  //printf("\n char:%u %u\n", (unsigned char)controlBit[1], (unsigned char)controlBit[0]);
   controlBit[0] = 0x00;  // reserved = 0
   if(header->isAck) controlBit[0] |= 0x10;
   if(header->isRst) controlBit[0] |= 0x04;

@@ -12,6 +12,21 @@ int appendToFileEnd(FILE *pf, const char incoming_message[], unsigned int length
 	fwrite(incoming_message+HEADER_SIZE, 1 , length , pf );
 }
 
+int printLog(bool isSend, Header* header)
+{
+  if (isSend) {
+  	printf("Sending packet ");
+  	if (header->isSyn)
+  	  printf("SYN\n");
+  	else
+  	  printf("%u\n", header->segmentNum);
+  	if (header->isFin) printf("FIN\n");
+  }
+  else {
+  	printf("Receiving packet %u\n", header->segmentNum);
+  }
+}
+
 int requestFile(int send_socket, int receive_socket, char* requestFile, FILE* pf)
 {
   Header header;
@@ -28,15 +43,15 @@ int requestFile(int send_socket, int receive_socket, char* requestFile, FILE* pf
       perror("Send failed");
       return 1;
   }
-  puts("Message Sent");
+  printLog(true, &header);
 
   //receives message back
   if (recv(receive_socket, incoming_message, sizeof(incoming_message), 0) <0) {
     puts("Received failed");
     return 1;
   }
-  puts("Message received");
   parseRequest(incoming_message, &header);
+  printLog(false, &header);
   if (header.isAck && header.isSyn && header.ackNum == seqNo+1) {
   	recSeqNo = header.segmentNum;
   }
@@ -51,16 +66,16 @@ int requestFile(int send_socket, int receive_socket, char* requestFile, FILE* pf
       perror("Send failed");
       return 1;
   	}
-  	puts("Message Sent");
+  	printLog(true, &header);
   	  //receives message back
 	if (recv(receive_socket, incoming_message, sizeof(incoming_message), 0) <0) {
 	  puts("Received failed");
 	  return 1;
 	}
-	puts("Message received");
 	//printHeader(incoming_message);
 	parseRequest(incoming_message, &header);
-	printf("received seq:%u, data length:%u, max: %u", header.segmentNum, header.dataLength, PACKET_LENGTH - HEADER_SIZE);
+  	printLog(false, &header);
+	//printf("received seq:%u, data length:%u, max: %u", header.segmentNum, header.dataLength, PACKET_LENGTH - HEADER_SIZE);
 	appendToFileEnd(pf, incoming_message, header.dataLength);
   } while (header.dataLength == PACKET_LENGTH - HEADER_SIZE);
   return 0;

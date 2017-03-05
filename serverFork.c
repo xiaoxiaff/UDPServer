@@ -15,6 +15,19 @@ int fileRead(FILE* pf, long int offset, char* message)
 
 }
 
+int printLog(bool isSend, Header* header)
+{
+  if (isSend) {
+  	printf("Sending packet %u %u ", header->segmentNum, header->window);
+  	if (header->isSyn) printf("SYN");
+  	if (header->isFin) printf("FIN");
+  	printf("\n");
+  }
+  else {
+  	printf("Receiving packet %u\n", header->ackNum);
+  }
+}
+
 int main(int argc, char *argv[])
 {
   //initialize socket and structure
@@ -64,14 +77,12 @@ int main(int argc, char *argv[])
 
     FILE *pf;
     parseRequest(incoming_message, &header);
-
+    printLog(false, &header);
     if (header.isSyn) {
-      printf("\nbefore filename\n");
 
       char filename[100];
       strncpy(filename, incoming_message+HEADER_SIZE, header.dataLength);
       filename[header.dataLength] = '\0';
-      printf("length:%d, filename:%s\n", header.dataLength, filename);
 
       pf=fopen(filename, "r");
       if (pf==NULL) {
@@ -97,11 +108,11 @@ int main(int argc, char *argv[])
     rewind (pf);
 
 
+    printLog(true, &header);
     if(send(send_socket, message, HEADER_SIZE, 0) <0) {        
       perror("Send failed");
       return 1;
   	}
-  	puts("Message Sent");
 
   	while (cur < fileSize) {
   	  if ( recv(receive_socket, incoming_message, sizeof(incoming_message), 0) < 0) {      
@@ -110,13 +121,14 @@ int main(int argc, char *argv[])
       }
 
       parseRequest(incoming_message, &header);
-      
-      printf("received seq:%u, cur:%ld, total:%ld", header.segmentNum, cur, fileSize);
+      printLog(false, &header);
+
+      //printf("received seq:%u, cur:%ld, total:%ld", header.segmentNum, cur, fileSize);
       if (header.ackNum == seqNo + 1) {
         size_t length = fileRead(pf, cur, message);
-        //printMessage(message, HEADER_SIZE+length);
+        //printLog(message, HEADER_SIZE+length);
         cur += length;
-	  	setHeader(&header, ++seqNo, ++recNo, 0, false, false, true, false, 0);
+	  	setHeader(&header, ++seqNo, ++recNo, 0, true, false, false, false, 0);
 	  	generatePacket(message, &header, message+HEADER_SIZE, length);
       } else {
       	continue;
@@ -125,6 +137,8 @@ int main(int argc, char *argv[])
         perror("Send failed");
         return 1;
       }
+
+      printLog(true, &header);
 
   	}
 
