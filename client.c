@@ -6,15 +6,75 @@
 #include "protocol.h"
 /* diep(), #includes and #defines like in the server */
 
+int appendToFileEnd(FILE *pf, const char incoming_message[], unsigned int length)
+{
+	fseek(pf, 0, SEEK_END);
+	fwrite(incoming_message+HEADER_SIZE, 1 , length , pf );
+}
+
+int requestFile(int send_socket, int receive_socket, char* requestFile, FILE* pf)
+{
+  Header header;
+  char message[PACKET_LENGTH] = {0};
+  char incoming_message[PACKET_LENGTH] = {0};
+
+  count seqNo = rand() / (RAND_MAX / (MAX_SEGMENT_NUMBER) + 1);
+  count recSeqNo;
+
+  setHeader(&header, seqNo, 0, 0, false, false, true, false, 0);
+  generatePacket(message, &header, requestFile, strlen(requestFile));
+
+  if (send(send_socket, message, HEADER_SIZE + strlen(requestFile), 0) <0) {
+      perror("Send failed");
+      return 1;
+  }
+  puts("Message Sent");
+
+  //receives message back
+  if (recv(receive_socket, incoming_message, sizeof(incoming_message), 0) <0) {
+    puts("Received failed");
+    return 1;
+  }
+  puts("Message received");
+  parseRequest(incoming_message, &header);
+  if (header.isAck && header.isSyn && header.ackNum == seqNo+1) {
+  	recSeqNo = header.segmentNum;
+  }
+  else {
+  	return 1;
+  }
+
+  do {
+  	setHeader(&header, ++seqNo, ++recSeqNo, 0, false, false, false, false, 0);
+  	generatePacket(message, &header, NULL, 0);
+  	if (send(send_socket, message, HEADER_SIZE + strlen(requestFile), 0) <0) {
+      perror("Send failed");
+      return 1;
+  	}
+  	puts("Message Sent");
+  	  //receives message back
+	if (recv(receive_socket, incoming_message, sizeof(incoming_message), 0) <0) {
+	  puts("Received failed");
+	  return 1;
+	}
+	puts("Message received");
+	//printHeader(incoming_message);
+	parseRequest(incoming_message, &header);
+	printf("received seq:%u, data length:%u, max: %u", header.segmentNum, header.dataLength, PACKET_LENGTH - HEADER_SIZE);
+	appendToFileEnd(pf, incoming_message, header.dataLength);
+  } while (header.dataLength == PACKET_LENGTH - HEADER_SIZE);
+  return 0;
+}
 
 int main(int argc, char *argv[])
 {
   //initialize socket and structure
   int send_socket, receive_socket;
   struct sockaddr_in server;
-  Header header;
-  char message[1024] = {0};
-  char incoming_message[1024] = {0};
+
+  FILE * pf;
+  pf = fopen ("received.txt", "w");
+
 
   //create socket
   send_socket = socket(AF_INET, SOCK_DGRAM, 0);
@@ -36,73 +96,6 @@ int main(int argc, char *argv[])
   }
   puts("Connected");
 
-  header.segmentNum = rand() / (RAND_MAX / (MAX_SEGMENT_NUMBER) + 1);
-  header.ackNum = 0;
-  header.window = 0;
-  header.isAck = true;
-  header.isRst = false;
-  header.isSyn = false;
-  header.isFin = false;
-
-  generateHeader(message, &header);
-  printHeader(message);
-  char *requestFile = "test.txt";
-  memcpy(message+HEADER_SIZE, requestFile, strlen(requestFile));
-  unsigned int resultAck;
-  memcpy(&resultAck, message+4, sizeof(unsigned int));
-  printf("\nresultAck:%u", resultAck);
-  memcpy(&resultAck, message, sizeof(unsigned int));
-  printf("\nSnyc:%u", resultAck);
-
-  // set Connection close state
-  /*char *connection = "Connection: close\r\n";
-  memcpy(buffer+offset, connection, strlen(connection));
-  offset += strlen(connection);
-
-  // set Current date
-  time_t now = time(0);
-  struct tm *mytime = localtime(&now);
-  char outstr[100];
-  strftime(outstr, sizeof(outstr), "Date: %a, %d %b %Y %H:%M:%S %Z\r\n", mytime);
-  memcpy(buffer+offset, outstr, strlen(outstr));
-  offset += strlen(outstr);
-
-  // set Server info
-  char *server = "Server: yukaiAndrea/1.0\r\n";
-  memcpy(buffer+offset, server, strlen(server));
-  offset += strlen(server);
-
-  // set Content-Length
-  char contentLength[50] = "Content-Length: ";  
-  char len[10];
-  sprintf (len, "%d", (unsigned int)filesize);
-  strcat(contentLength, len);
-  strcat(contentLength, "\r\n");
-
-  memcpy(buffer+offset, contentLength, strlen(contentLength));
-  offset += strlen(contentLength);
-
-  // set Content-Type based on uri.
-  char *contentType;
-  if (f == html)  contentType =  "Content-Type: text/html\r\n";
-  if (f == txt)  contentType =  "Content-Type: text/plain\r\n";
-  if (f == jpeg)  contentType =  "Content-Type: image/jpeg\r\n";
-  if (f == jpg)  contentType =  "Content-Type: image/jpg\r\n";
-  if (f == gif)  contentType =  "Content-Type: image/gif\r\n";
-  memcpy(buffer+offset, contentType, strlen(contentType));
-  offset += strlen(contentType);
-
-  // finish the header
-  memcpy(buffer+offset, "\r\n\0", 3);*/
-  //sends message
-  printHeader(message);
-  printf("strlen:%d",strlen(message));
-  if (send(send_socket, message, HEADER_SIZE + strlen(requestFile), 0) <0) {
-      perror("Send failed");
-      return 1;
-  }
-  puts("Message Sent");
-
   server.sin_port = htons( 8081);
 
   //checks connection
@@ -113,13 +106,10 @@ int main(int argc, char *argv[])
   printf("Main\n");
   puts("Bind");
 
-  //receives message back
-  if(recv(receive_socket, incoming_message, sizeof(incoming_message), 0) <0) {
-    puts("Received failed");
-    return 1;
-  }
-  puts("Message received");
-  puts(incoming_message);
+  requestFile(send_socket, receive_socket, "test.txt", pf);
+
+  fclose (pf);
+  puts("finished");
 
   close(send_socket);
   close(receive_socket);

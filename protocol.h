@@ -13,10 +13,27 @@
 
 #define MAX_SEGMENT_NUMBER 30720
 #define HEADER_SIZE 12
+#define PACKET_LENGTH 1024
 
+typedef unsigned int count;
+/**
+
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Sequence Number                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Acknowledgment Number                      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                   |U|A|P|R|S|F|                               |
+|    data length    |R|C|S|S|Y|I|            Window             |
+|                   |G|K|H|T|N|N|                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
 typedef struct ProtocolHeader {
-   unsigned int segmentNum;
-   unsigned int ackNum;
+   count segmentNum;
+   count ackNum;
+   count dataLength;
    bool isAck;
    bool isRst;
    bool isSyn;
@@ -28,6 +45,14 @@ int parseRequest(char incoming_message[], Header* header);
 
 void printHeader(char header[]);
 
+void printMessage(char message[], size_t length);
+
+int generatePacket(char message[], Header* header,
+				   const char* content, const count length);
+
 int generateHeader(char message[], const Header* header);
+
+int setHeader(Header* header, count seqNo, count ackNo, count length,
+			  bool ack, bool rst, bool syn, bool fin, unsigned short window);
 
 #endif

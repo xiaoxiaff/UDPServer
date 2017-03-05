@@ -2,25 +2,25 @@
 
 int parseRequest(char incoming_message[], Header* header)
 {
-  unsigned int sync = 0, ack = 0;
   char control[2];
-  unsigned short window = 0;
 
   int offset = 0;
 
   memcpy(&(header->segmentNum), incoming_message+offset, sizeof(unsigned int));
   offset += sizeof(unsigned int);
-  printf("offset:%d", offset);
   memcpy(&(header->ackNum), incoming_message+offset, sizeof(unsigned int));
   offset += sizeof(unsigned int);
-  printf("offset:%d", offset);
   memcpy(control, incoming_message+offset, sizeof(control));
   offset += sizeof(control);
-  printf("offset:%d", offset);
   memcpy(&(header->window), incoming_message+offset, sizeof(unsigned short));
   offset += sizeof(short);
-  printf("offset:%d\n", offset);
 
+  count length = 0;
+  length |= (unsigned char)control[1];
+  printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)control[1], (length<<2));
+  header->dataLength = ((length<<2)) | ((unsigned char)control[0]>>6);
+  printf("\n parse: data length:%u %u\n", control[1], header->dataLength);
+  printf("\n char:%u %u\n", (unsigned char)control[1], (unsigned char)control[0]);
   printf("controlbit:%u\n", control[0]);
   header->isAck = control[0] & 0x10 ? true : false;
   header->isRst = control[0] & 0x4 ? true : false;
@@ -42,6 +42,29 @@ void printHeader(char header[])
   printf("\n");
 }
 
+void printMessage(char message[], size_t length)
+{
+  int i;
+  printf("\nmessage:");
+
+  for(i=0;i<length;i++)
+  {
+    printf("%u", message[i]);
+  }
+  printf("\n");
+}
+
+int generatePacket(char message[], Header* header,
+				   const char* content, const unsigned int length)
+{
+  header->dataLength = length;
+  printf("data length:%u", header->dataLength);
+  generateHeader(message, header);
+
+  if (content)
+  	memcpy(message+HEADER_SIZE, content, length);
+  return 0;
+}
 
 int generateHeader(char message[], const Header* header)
 {
@@ -61,7 +84,6 @@ int generateHeader(char message[], const Header* header)
 
   memcpy(message+offset, seq, sizeof(seq));
   offset += sizeof(seq);
-  printf("offset:%d", offset);
 
   char ack[4] = {0};
   ack[3] = (header->ackNum >> 24) & 0xFF;
@@ -70,19 +92,23 @@ int generateHeader(char message[], const Header* header)
   ack[0] = header->ackNum & 0xFF;
   memcpy(message+offset, ack, sizeof(ack));
   offset += sizeof(ack);
-  printf("offset:%d", offset);
 
-  char controlBit[2] = {};
-  controlBit[1] = 0x30;  // data offset = 3, reserved = 0
+  char controlBit[2] = {0};
+  controlBit[1] = (header->dataLength>>2) & 0xFF;
+  controlBit[0] = ((header->dataLength<<6) & 0xC0);
+  count length = 0;
+  length |= (unsigned char)controlBit[1];
+  printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)controlBit[1], (length<<2));
+  length = ((length<<2)) | ((unsigned char)controlBit[0]>>6);
+  printf("\n generate: data length:%u %u\n", length, header->dataLength);
+  printf("\n char:%u %u\n", (unsigned char)controlBit[1], (unsigned char)controlBit[0]);
   controlBit[0] = 0x00;  // reserved = 0
   if(header->isAck) controlBit[0] |= 0x10;
   if(header->isRst) controlBit[0] |= 0x04;
   if(header->isSyn) controlBit[0] |= 0x02;
   if(header->isFin) controlBit[0] |= 0x01;
-  printf("controlbit:%u %u\n", controlBit[1], controlBit[0]);
   memcpy(message+offset, controlBit, sizeof(controlBit));
   offset += sizeof(controlBit);
-  printf("offset:%d", offset);
 
   char windowSize[2] = {0};
 
@@ -93,4 +119,17 @@ int generateHeader(char message[], const Header* header)
   offset += sizeof(windowSize);
 
   return 0;
+}
+
+int setHeader(Header* header, count seqNo, count ackNo, count length,
+			  bool ack, bool rst, bool syn, bool fin, unsigned short window)
+{
+  header->segmentNum = seqNo;
+  header->ackNum = ackNo;
+  header->dataLength = length;
+  header->isAck = ack;
+  header->isRst = rst;
+  header->isSyn = syn;
+  header->isFin = fin;
+  header->window = window;
 }
