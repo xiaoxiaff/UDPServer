@@ -56,7 +56,7 @@ void printMessage(char message[], size_t length)
 
 int generatePacket(char message[], Header* header,
 				   const char* content, const unsigned int length)
-{
+{  
   header->dataLength = length;
   //printf("data length:%u", header->dataLength);
   generateHeader(message, header);
