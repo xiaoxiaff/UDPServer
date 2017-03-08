@@ -41,6 +41,19 @@ typedef struct ProtocolHeader {
    unsigned short window;
 } Header;
 
+typedef struct Packet {
+	int length;
+	count segmentNum;
+	long timestamp;
+	char message[PACKET_LENGTH];
+} Packet;
+
+typedef struct Node {
+	Packet* packet;
+	struct Node* prev;
+	struct Node* next;
+} Node;
+
 int parseRequest(char incoming_message[], Header* header);
 
 void printHeader(char header[]);
@@ -54,5 +67,7 @@ int generateHeader(char message[], const Header* header);
 
 int setHeader(Header* header, count seqNo, count ackNo, count length,
 			  bool ack, bool rst, bool syn, bool fin, unsigned short window);
+			  
+long gettime();
 
 #endif

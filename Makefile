@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I.
+CFLAGS=-I. -pthread
 DEPS = protocol.h
 OBJ = protocol.o
 

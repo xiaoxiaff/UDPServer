@@ -56,7 +56,7 @@ void printMessage(char message[], size_t length)
 
 int generatePacket(char message[], Header* header,
 				   const char* content, const unsigned int length)
-{  
+{
   header->dataLength = length;
   //printf("data length:%u", header->dataLength);
   generateHeader(message, header);
@@ -132,4 +132,10 @@ int setHeader(Header* header, count seqNo, count ackNo, count length,
   header->isSyn = syn;
   header->isFin = fin;
   header->window = window;
+}
+
+long gettime() {
+	struct timeval tp;
+	gettimeofday(&tp, NULL);
+	long ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
 }
