@@ -1,78 +1,69 @@
 #include "protocol.h"
+#define TIMEOUT_INTERVAL 500
 
-int parseRequest(char incoming_message[], Header* header)
+Header::Header()
 {
-  char control[2];
-
-  int offset = 0;
-
-  memcpy(&(header->segmentNum), incoming_message+offset, sizeof(unsigned int));
-  offset += sizeof(unsigned int);
-  memcpy(&(header->ackNum), incoming_message+offset, sizeof(unsigned int));
-  offset += sizeof(unsigned int);
-  memcpy(control, incoming_message+offset, sizeof(control));
-  offset += sizeof(control);
-  memcpy(&(header->window), incoming_message+offset, sizeof(unsigned short));
-  offset += sizeof(short);
-
-  count length = 0;
-  length |= (unsigned char)control[1];
-  //printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)control[1], (length<<2));
-  header->dataLength = ((length<<2)) | ((unsigned char)control[0]>>6);
-  //printf("\n parse: data length:%u %u\n", control[1], header->dataLength);
-  //printf("\n char:%u %u\n", (unsigned char)control[1], (unsigned char)control[0]);
-  //printf("controlbit:%u\n", control[0]);
-  header->isAck = control[0] & 0x10 ? true : false;
-  header->isRst = control[0] & 0x4 ? true : false;
-  header->isSyn = control[0] & 0x2 ? true : false;
-  header->isFin = control[0] & 0x1 ? true : false;
-
-  return 0;
 }
 
-void printHeader(char header[])
+Header::Header(count initID, count seqNo, count ackNo, count window,
+	     	   bool ext, bool ack, bool rst, bool syn, bool fin, const count length)
+  : initID(initID)
+  , segmentNum(seqNo)
+  , ackNum(ackNo)
+  , window(window)
+  , dataLength(length)
+  , isExt(ext)
+  , isAck(ack)
+  , isRst(rst)
+  , isSyn(syn)
+  , isFin(fin)
 {
-  int i;
-  printf("\nheader:");
-
-  for(i=0;i<12;i++)
-  {
-    printf("%u", header[i]);
-  }
-  printf("\n");
 }
 
-void printMessage(char message[], size_t length)
+Packet::Packet(char content[])
 {
-  int i;
-  printf("\nmessage:");
-
-  for(i=0;i<length;i++)
-  {
-    printf("%u", message[i]);
-  }
-  printf("\n");
+  header = new Header();
+  memcpy(message, content, PACKET_LENGTH);
+  parseRequest();
 }
 
-int generatePacket(char message[], Header* header,
-				   const char* content, const unsigned int length)
+Packet::Packet(count initID, count seqNo, count ackNo, count window,
+	     	   bool ext, bool ack, bool rst, bool syn, bool fin,
+	     	   const char* content, const count length)
+{
+  header = new Header(initID, seqNo, ackNo, window,
+  	                  ext, ack, rst, syn, fin, length);
+  if (content)
+  memcpy(message+HEADER_SIZE, content, length);
+}
+
+int
+Packet::setMessage(const char* content, const unsigned int length)
 {
   header->dataLength = length;
-  //printf("data length:%u", header->dataLength);
-  generateHeader(message, header);
 
   if (content)
   	memcpy(message+HEADER_SIZE, content, length);
   return 0;
 }
 
-int generateHeader(char message[], const Header* header)
+int
+Packet::encode()
 {
   //printf("generate request\n");
 
   // set HTML version and statu code
   int offset = 0;
   srand(time(NULL));
+
+  char init[4] = {0};
+  init[3] = (header->initID >> 24) & 0xFF;
+  init[2] = (header->initID >> 16) & 0xFF;
+  init[1] = (header->initID >> 8) & 0xFF;
+  init[0] = header->initID & 0xFF;
+
+  memcpy(message+offset, init, sizeof(init));
+  offset += sizeof(init);
   //unsigned int segmentNum = rand() / (RAND_MAX / (MAX_SEGMENT_NUMBER) + 1);
   char seq[4] = {0};
   seq[3] = (header->segmentNum >> 24) & 0xFF;
@@ -102,11 +93,12 @@ int generateHeader(char message[], const Header* header)
   length = ((length<<2)) | ((unsigned char)controlBit[0]>>6);
   //printf("\n generate: data length:%u %u\n", length, header->dataLength);
   //printf("\n char:%u %u\n", (unsigned char)controlBit[1], (unsigned char)controlBit[0]);
-  controlBit[0] = 0x00;  // reserved = 0
+  if(header->isExt) controlBit[0] |= 0x20;
   if(header->isAck) controlBit[0] |= 0x10;
   if(header->isRst) controlBit[0] |= 0x04;
   if(header->isSyn) controlBit[0] |= 0x02;
   if(header->isFin) controlBit[0] |= 0x01;
+  //printf("\n char:%u %u\n", (unsigned char)controlBit[1], (unsigned char)controlBit[0]);
   memcpy(message+offset, controlBit, sizeof(controlBit));
   offset += sizeof(controlBit);
 
@@ -121,21 +113,245 @@ int generateHeader(char message[], const Header* header)
   return 0;
 }
 
-int setHeader(Header* header, count seqNo, count ackNo, count length,
-			  bool ack, bool rst, bool syn, bool fin, unsigned short window)
+int
+Packet::parseRequest()
 {
-  header->segmentNum = seqNo;
-  header->ackNum = ackNo;
-  header->dataLength = length;
-  header->isAck = ack;
-  header->isRst = rst;
-  header->isSyn = syn;
-  header->isFin = fin;
-  header->window = window;
+  char control[2];
+
+  int offset = 0;
+
+  memcpy(&(header->initID), message+offset, sizeof(unsigned int));
+  offset += sizeof(unsigned int);
+  memcpy(&(header->segmentNum), message+offset, sizeof(unsigned int));
+  offset += sizeof(unsigned int);
+  memcpy(&(header->ackNum), message+offset, sizeof(unsigned int));
+  offset += sizeof(unsigned int);
+  memcpy(control, message+offset, sizeof(control));
+  offset += sizeof(control);
+  memcpy(&(header->window), message+offset, sizeof(unsigned short));
+  offset += sizeof(short);
+
+  count length = 0;
+  length |= (unsigned char)control[1];
+  //printf("\n mid: data length:%u, %u, %u\n", length, (unsigned char)control[1], (length<<2));
+  header->dataLength = ((length<<2)) | ((unsigned char)control[0]>>6);
+  //printf("\n parse: data length:%u %u\n", control[1], header->dataLength);
+  //printf("\n char:%u %u\n", (unsigned char)control[1], (unsigned char)control[0]);
+  //printf("controlbit:%u\n", control[0]);
+  header->isExt = control[0] & 0x20 ? true : false;
+  header->isAck = control[0] & 0x10 ? true : false;
+  header->isRst = control[0] & 0x4 ? true : false;
+  header->isSyn = control[0] & 0x2 ? true : false;
+  header->isFin = control[0] & 0x1 ? true : false;
+
+  return 0;
 }
 
-long gettime() {
-	struct timeval tp;
-	gettimeofday(&tp, NULL);
-	long ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+void
+Packet::printHeader()
+{
+  int i;
+  std::cout<<"header size"<<HEADER_SIZE<<std::endl;
+
+  for(i=0;i<HEADER_SIZE;i++)
+  {
+    printf("%d:%u,", i, message[i]);
+    if (!((i+1)%4))
+      printf("\n");
+  }
+  printf("\n");
+}
+
+void
+Packet::print()
+{
+  std::cout<<"========================="<<std::endl;
+  //std::cout<<"id:"<<header->initID<<std::endl;
+  std::cout<<"seq:"<<header->segmentNum<<std::endl;
+  std::cout<<"ack:"<<header->ackNum<<std::endl;
+  //std::cout<<"dataLength:"<<header->dataLength<<std::endl;
+  //std::cout<<"window:"<<header->window<<std::endl;
+  //std::cout<<"syn"<<header->isSyn<<std::endl;
+  //std::cout<<"ack:"<<header->isAck<<std::endl;
+  //std::cout<<"fin:"<<header->isFin<<std::endl;
+}
+
+Node::Node(Packet* packet, bool needAck)
+{
+  this->packet = packet;
+  this->needAck = needAck;
+  this->retransmittime = 0;
+}
+
+Node::~Node()
+{
+  delete this->packet;
+}
+
+void printMessage(char message[], size_t length)
+{
+  int i;
+  printf("\nmessage:");
+
+  for(i=0;i<length;i++)
+  {
+    printf("%u", message[i]);
+  }
+  printf("\n");
+}
+
+int get_time()
+{
+  timeval curTime;
+  gettimeofday(&curTime, NULL);
+  return curTime.tv_usec / 1000;
+}
+
+void sendPacket(sendArgs* args, Packet* packet, bool needAck)
+{
+  Node* node = new Node(packet, needAck);
+  std::cout<<packet<<" "<<node<<std::endl;
+  puts("send packet");
+  args->lock.lock();
+    args->send_queue.push(node);
+    if (needAck) {
+      //std::cout<<"seq:"<<packet->header->segmentNum<<", data:"<<packet->header->dataLength<<" wait for ack"<<std::endl;
+      node->timestamp = gettime() + TIMEOUT_INTERVAL;
+      args->time_queue.push_back(node);
+    }
+  args->lock.unlock();
+  //std::cout<<"send queue length:"<<args->send_queue.size()<<std::endl;
+}
+
+void send_data(sendArgs* args) {
+  puts("send_data");
+  while(args->isRunning) {
+      Node* node = NULL;
+      args->lock.lock();
+      if (!args->send_queue.empty()) {
+        //std::cout<<"get node from send queue"<<std::endl;
+        node = args->send_queue.front();
+        args->send_queue.pop();
+      }
+      args->lock.unlock();
+      if (node)
+      {
+      	Header* h = node->packet->header;
+      	if(args->isServer)
+      	  std::cout<<" Sending packet "<<h->segmentNum<<" "<<h->window;
+      	else
+      	  std::cout<<" Sending packet "<<h->ackNum<<" "<<h->window;
+      	if(h->isSyn)
+      	  std::cout<<" SYN";
+      	if(h->isFin)
+      	  std::cout<<" FIN";
+      	std::cout<<std::endl;
+
+        node->packet->encode();
+
+        node->packet->print();
+        //std::cout<<node->packet->header->dataLength<<std::endl;
+        if(send(args->socket, (node->packet)->message,
+        	    HEADER_SIZE + (node->packet->header)->dataLength, 0) <0) {
+          perror("Send failed\n");
+        }
+  		  //std::cout<<node<<"after send data"<<args->send_queue.size()<<args->send_queue.empty()<<std::endl;
+        //printLog(true, node->packet->header);
+        if (!node->needAck)
+          delete node;
+     }
+  }
+  std::cout<<"exit send_data"<<std::endl;
+}
+
+void receive_data(recvArgs* args) {
+  char incoming_message[PACKET_LENGTH]; 
+  long cur = 0;
+
+  puts("receive_data");
+  while (args->isRunning) {
+    if ( recv(args->socket, incoming_message, sizeof(incoming_message), 0) < 0) {
+      puts("Received failed");
+      exit(1);
+    }
+    std::cout<<"get data"<<std::endl;
+    //printLog(false, &header);
+
+    Packet* packet = new Packet(incoming_message);
+    Node *node = new Node(packet, false);
+
+    node->packet->print();
+    Header* h = node->packet->header;
+    if(args->isServer)
+      std::cout<<"Receiving packet "<<h->ackNum;
+    else
+      std::cout<<"Receiving packet "<<h->segmentNum;
+    std::cout<<std::endl;
+
+    args->lock.lock();
+      args->queue.push(node);
+    args->lock.unlock();
+  }
+  std::cout<<"exit receive_data"<<std::endl;
+
+}
+
+void check_timeout(sendArgs* args) {
+  puts("check_timeout");
+  while (args->isRunning) {
+    args->lock.lock();
+      if (!args->time_queue.empty()) {
+        auto it = args->time_queue.begin();
+        //std::cout<<(*it)->timestamp <<", "<< gettime()<<std::endl;
+        if((*it)->timestamp < gettime()) {
+          std::cout<<"time_out!!!!!!!!!!!!!!!!!!!!\nseq:"<<(*it)->packet->header->segmentNum<<std::endl;
+          Node* node = (*it);
+          node->retransmittime += 1;
+          if (node->retransmittime > 4 && node->packet->header->isFin && args->isServer) {
+            std::cout<<"Fin time out at server"<<std::endl;
+            args->time_queue.erase(it);
+          }
+          else {
+            args->send_queue.push(node);
+            args->time_queue.erase(it);
+            node->timestamp = gettime() + TIMEOUT_INTERVAL;
+            args->time_queue.push_back(node);
+          }
+        }
+      }
+    args->lock.unlock();
+  }
+  std::cout<<"exit checkout time"<<std::endl;
+}
+
+bool checkBuffer(sendArgs* args, Node* node)
+{
+  Header* header = node->packet->header;
+  //if (header->isAck)
+  //  return false;
+  args->lock.lock();
+    std::cout<<"time q size"<<args->time_queue.size()<<std::endl;
+    auto it1 = args->time_queue.begin();
+    while (it1 != args->time_queue.end() &&
+         (*it1)->packet->header->segmentNum + (*it1)->packet->header->dataLength != header->ackNum) {
+      it1++;
+    }
+    if (it1 != args->time_queue.end()) {
+      std::cout<<"erase!!!!\nack:"<<header->ackNum<<" eliminate seq:"<<(*it1)->packet->header->segmentNum<<std::endl;
+      delete *it1;
+      args->time_queue.erase(it1);
+      //std::cout<<"after erase"<<std::endl;
+    }
+    std::cout<<"after process time q size"<<args->time_queue.size()<<std::endl;
+  args->lock.unlock();
+  return true;
+
+}
+
+long long gettime() {
+    struct timeval te; 
+    gettimeofday(&te, NULL); // get current time
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
+    // printf("milliseconds: %lld\n", milliseconds);
+    return milliseconds;
 }
