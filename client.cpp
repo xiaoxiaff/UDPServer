@@ -125,12 +125,19 @@ int requestFile(sendArgs* send_args, recvArgs* recv_args, std::string requestFil
 
 int main(int argc, char *argv[])
 {
+  if (argc != 4) {
+    perror("arguments error");
+    return 1;
+  }
+  std::string hostname = argv[1];
+  int port = std::stoi(argv[2]);
+  std::string filename = argv[3];
   //initialize socket and structure
   int send_socket, receive_socket;
   struct sockaddr_in server;
 
   FILE * pf;
-  pf = fopen ("received.txt", "w");
+  pf = fopen ("received.data", "w");
 
   //create socket
   send_socket = socket(AF_INET, SOCK_DGRAM, 0);
@@ -141,9 +148,10 @@ int main(int argc, char *argv[])
   }
 
   //assign local values
-  server.sin_addr.s_addr = htonl(INADDR_ANY);
+  inet_aton(hostname.c_str(), &server.sin_addr);
+  //server.sin_addr.s_addr = hostname;
   server.sin_family = AF_INET;
-  server.sin_port = htons( 8080 );
+  server.sin_port = htons(port);
 
   //checks connection
   if (connect(send_socket, (struct sockaddr *)&server, sizeof(server)) < 0) {
@@ -152,7 +160,7 @@ int main(int argc, char *argv[])
   }
   puts("Connected");
 
-  server.sin_port = htons( 8081);
+  server.sin_port = htons(8081);
 
   //checks connection
   if (bind(receive_socket, (struct sockaddr *)&server, sizeof(server)) < 0) {
@@ -174,7 +182,7 @@ int main(int argc, char *argv[])
   std::thread t1(send_data, &send_args);
   std::thread t2(receive_data, &recv_args);
   std::thread t3(check_timeout, &send_args);
-  requestFile(&send_args, &recv_args, "test.txt", pf);
+  requestFile(&send_args, &recv_args, filename, pf);
 
   fclose (pf);
   puts("finished");

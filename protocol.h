@@ -17,12 +17,14 @@
 #include <queue>
 #include <map>
 #include <string>
+#include <arpa/inet.h>
 
 #define MAX_SEGMENT_NUMBER 30720
 #define HEADER_SIZE 16
 #define PACKET_LENGTH 1024
 
 #define RETRANSMITTIME 50
+#define CLIENTPORT 8081
 
 typedef unsigned int count;
 /**
@@ -104,6 +106,7 @@ typedef struct recvArgs {
   int socket;
   std::queue<Node*> queue;
   std::mutex lock;
+  std::string clientIp;
   bool isRunning;
 } recvArgs;
 

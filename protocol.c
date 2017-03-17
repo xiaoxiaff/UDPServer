@@ -267,18 +267,20 @@ void send_data(sendArgs* args) {
 }
 
 void receive_data(recvArgs* args) {
-  char incoming_message[PACKET_LENGTH]; 
-  long cur = 0;
+  char incoming_message[PACKET_LENGTH];
 
   puts("receive_data");
+  struct sockaddr_in from;            /* Sender's address. */
+  socklen_t fromlen;              /* Length of sender's address. */
+  fromlen = sizeof(from);
   while (args->isRunning) {
-    if ( recv(args->socket, incoming_message, sizeof(incoming_message), 0) < 0) {
+    if ( recvfrom(args->socket, incoming_message, sizeof(incoming_message), 0, (struct sockaddr *)&from, &fromlen) < 0) {
       puts("Received failed");
       exit(1);
     }
     //std::cout<<"get data"<<std::endl;
     //printLog(false, &header);
-
+    //std::cout<<std::string(inet_ntoa(from.sin_addr))<<", "<<from.sin_port<<std::endl;
     Packet* packet = new Packet(incoming_message);
     Node *node = new Node(packet, false);
 
@@ -291,6 +293,8 @@ void receive_data(recvArgs* args) {
     std::cout<<std::endl;
 
     args->lock.lock();
+      if (args->clientIp != std::string(inet_ntoa(from.sin_addr)))
+        args->clientIp = std::string(inet_ntoa(from.sin_addr));
       args->queue.push(node);
     args->lock.unlock();
   }
