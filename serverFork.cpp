@@ -50,6 +50,10 @@ int main(int argc, char *argv[])
   std::map<count, long>::iterator filesize_it;
   std::map<count, count>::iterator nextsegment_it;
   std::map<count, count>::iterator sendbase_it;
+  bool finished = false, timewait = false;
+  bool finAckRecved = false;
+  std::chrono::time_point<std::chrono::system_clock> start, end;
+  count deletedId;
 
   std::vector<BufferNode*> buffer;
 
@@ -110,62 +114,91 @@ int main(int argc, char *argv[])
 	  }
     recv_args.lock.unlock();
 
-	  if (!node)
+	  if (!node) {
+      if (timewait) {
+        end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = end-start;
+        //std::cout<<"start time:"<<std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_seconds).count()<<std::endl;
+        if (elapsed_seconds.count() > 1.0) {
+
+          //std::cout<<"before erase"<<std::endl;
+          id_nextsegment.erase (deletedId);
+          //std::cout<<"erase offset"<<std::endl;
+          id_filename.erase (deletedId);
+          //std::cout<<"erase filenmae"<<std::endl;
+          id_sendbase.erase (deletedId);
+          //std::cout<<"erase window"<<std::endl;
+          id_filesize.erase (deletedId);
+          //std::cout<<"erase fileSize"<<std::endl;
+          id_offset.erase (deletedId);
+          //std::cout<<"erase fileSize"<<std::endl;
+          deletedId = 0;
+          timewait = false;
+        }
+      }
 	    continue;
+    }
 
     FILE *pf = NULL;
     Header* header = node->packet->header;
     checkBuffer(&send_args, node);
 
-    std::cout<<"server process node"<<std::endl;
+    //std::cout<<"server process node"<<std::endl;
     //node->packet->print();
     if (header->isSyn) {
 
-      std::cout<<"isSyn"<<std::endl;
+      //std::cout<<"isSyn"<<std::endl;
       sendbase_it = id_sendbase.find(header->initID);
       if (sendbase_it == id_sendbase.end()) { 
         //printf("Syn packet\n");
         //printf("before file ");
         count seq = rand() / (RAND_MAX / (MAX_SEGMENT_NUMBER) + 1);
         Packet* packet = new Packet(header->initID, seq, 
-                                    header->segmentNum + header->dataLength,
+                                    (header->segmentNum + header->dataLength) % MAX_SEGMENT_NUMBER,
                                     header->window,
                                     false, true, false, true, false);
         sendPacket(&send_args, packet, true);
         id_sendbase[header->initID] = 0;
+        finished = false;
+        timewait = false;
+        finAckRecved = false;
       }
       //std::cout<<"finished syn"<<std::endl;
     }
     else if (header->isFin) {
-      std::cout<<"isFin"<<std::endl;
-      if (header->isAck || buffer.size()>0) {
+      //std::cout<<"isFin"<<std::endl;
+      sendbase_it = id_sendbase.find(header->initID);
+      if (sendbase_it == id_sendbase.end()) {
+        delete node;
+        continue;
+      }
+      if (header->isAck) {
+        finAckRecved = true;
+        delete node;
+        continue;
+      }
+
+      if (!finAckRecved) {
         delete node;
         continue;
       }
 
       Packet* packet1 = new Packet(header->initID, header->ackNum,
-                                    header->segmentNum + header->dataLength,
-                                    header->window, false, true, false, false, true);
+                                   (header->segmentNum + header->dataLength) % MAX_SEGMENT_NUMBER,
+                                   header->window, false, true, false, false, true);
       sendPacket(&send_args, packet1, false);
 
-      Packet* packet2 = new Packet(header->initID, header->ackNum+1,
-                          header->segmentNum + header->dataLength+1,
-                          header->window, false, false, false, false, true);
-      sendPacket(&send_args, packet2, true);
-      std::cout<<"before erase"<<std::endl;
-      id_nextsegment.erase (header->initID);
-      std::cout<<"erase offset"<<std::endl;
-      id_filename.erase (header->initID);
-      std::cout<<"erase filenmae"<<std::endl;
-      id_sendbase.erase (header->initID);
-      std::cout<<"erase window"<<std::endl;
-      id_filesize.erase (header->initID);
-      std::cout<<"erase fileSize"<<std::endl;
-      id_offset.erase (header->initID);
-      std::cout<<"erase fileSize"<<std::endl;
+      timewait = true;
+      deletedId = header->initID;
+      start = std::chrono::system_clock::now();
     }
 
     else if (header->isAck) {
+      sendbase_it = id_sendbase.find(header->initID);
+      if (sendbase_it == id_sendbase.end()) {
+        delete node;
+        continue;
+      }
       //std::cout<<"isAck"<<std::endl;
       filename_it = id_filename.find(header->initID);
       window = header->window;
@@ -189,7 +222,7 @@ int main(int argc, char *argv[])
       }
 
       //std::cout<<"after filename"<<std::endl;
-      if (pf==NULL || header->ackNum < id_sendbase[header->initID]) {
+      if (pf==NULL || lessthan(header->ackNum, id_sendbase[header->initID])) {
         fputs ("error occured",stderr);
         delete node;
         continue;
@@ -200,7 +233,7 @@ int main(int argc, char *argv[])
         it++;
       }
       if (it != buffer.end() && (*it)->isAcked == true) {
-        fputs ("duplicated ack recevied",stderr);
+        //fputs ("duplicated ack recevied",stderr);
         delete node;
         continue;
       }
@@ -209,34 +242,54 @@ int main(int argc, char *argv[])
       it = buffer.begin();
       while (it != buffer.end() && (*it)->isAcked == true) {
         id_sendbase[header->initID] = (*it)->ackNum;
-        std::cout<<"update sendbase to "<<id_sendbase[header->initID]<<std::endl;
+        //std::cout<<"update sendbase to "<<id_sendbase[header->initID]<<std::endl;
         delete *it;
         buffer.erase(it);
         it = buffer.begin();
       }
 
-      while (id_nextsegment[header->initID] - id_sendbase[header->initID] < window)
+      while (((id_nextsegment[header->initID] - id_sendbase[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER) < window)
       {
         Packet* packet = new Packet(header->initID, id_nextsegment[header->initID],
-                                    header->segmentNum + header->dataLength,
+                                    (header->segmentNum + header->dataLength) % MAX_SEGMENT_NUMBER,
                                     header->window);
 
-        size_t length = fileRead(pf, id_nextsegment[header->initID] - id_offset[header->initID], packet->message);
-        if (id_nextsegment[header->initID] + length - id_sendbase[header->initID]> window || length == 0) {
+        size_t length = fileRead(pf,
+          (id_nextsegment[header->initID] - id_offset[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER,
+          packet->message);
+        //std::cout<<"------"<<id_nextsegment[header->initID]<<", "<<id_offset[header->initID]<<", "<< id_sendbase[header->initID] << ", " <<
+        //(id_nextsegment[header->initID] - id_offset[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER<<", "<<
+        //(id_nextsegment[header->initID] + length - id_sendbase[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER<<std::endl;
+
+        if ((id_nextsegment[header->initID] + length - id_sendbase[header->initID] + MAX_SEGMENT_NUMBER) %
+            MAX_SEGMENT_NUMBER > window || length == 0) {
+          if (length == 0) {
+            //std::cout<<"------------------finished"<<std::endl;
+            finished = true;
+          }
           delete packet;
           break;
         }
         else{
           packet->header->dataLength = length;
           BufferNode* buffernode = new BufferNode();
-          buffernode->ackNum = id_nextsegment[header->initID] + length;
+          buffernode->ackNum = (id_nextsegment[header->initID] + length) % MAX_SEGMENT_NUMBER;
           buffernode->isAcked = false;
           buffer.push_back(buffernode);
-          id_nextsegment[header->initID] += length;
+          id_nextsegment[header->initID] = (id_nextsegment[header->initID] + length ) % MAX_SEGMENT_NUMBER;
           sendPacket(&send_args, packet, true);
         }
       }
 
+    }
+
+    if (finished && buffer.empty()) {
+      finished = false;
+      //std::cout<<"==================received all "<<id_nextsegment[header->initID] + 1 % MAX_SEGMENT_NUMBER<<std::endl;
+      Packet* packet = new Packet(header->initID, (id_nextsegment[header->initID] + 1) % MAX_SEGMENT_NUMBER,
+                                  (header->segmentNum + header->dataLength + 1) % MAX_SEGMENT_NUMBER,
+                                  header->window, false, false, false, false, true);
+      sendPacket(&send_args, packet, true);
     }
 
     //std::cout<<"before close pf"<<std::endl;

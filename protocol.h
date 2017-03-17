@@ -22,6 +22,8 @@
 #define HEADER_SIZE 16
 #define PACKET_LENGTH 1024
 
+#define RETRANSMITTIME 50
+
 typedef unsigned int count;
 /**
 
@@ -132,5 +134,8 @@ void printMessage(char message[], size_t length);
 bool checkBuffer(sendArgs* args, Node* node);
 
 long long gettime();
+
+bool lessthan(count c1, count c2);
+bool greaterthan(count c1, count c2);
 
 #endif

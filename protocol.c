@@ -210,8 +210,8 @@ int get_time()
 void sendPacket(sendArgs* args, Packet* packet, bool needAck)
 {
   Node* node = new Node(packet, needAck);
-  std::cout<<packet<<" "<<node<<std::endl;
-  puts("send packet");
+  //std::cout<<packet<<" "<<node<<std::endl;
+  //puts("send packet");
   args->lock.lock();
     args->send_queue.push(node);
     if (needAck) {
@@ -238,9 +238,11 @@ void send_data(sendArgs* args) {
       {
       	Header* h = node->packet->header;
       	if(args->isServer)
-      	  std::cout<<" Sending packet "<<h->segmentNum<<" "<<h->window;
+      	  std::cout<<"Sending packet "<<h->segmentNum<<" "<<h->window;
       	else
-      	  std::cout<<" Sending packet "<<h->ackNum<<" "<<h->window;
+      	  std::cout<<"Sending packet "<<h->ackNum<<" "<<h->window;
+        if(node->retransmittime != 0)
+          std::cout<<" Retransmission";
       	if(h->isSyn)
       	  std::cout<<" SYN";
       	if(h->isFin)
@@ -249,7 +251,7 @@ void send_data(sendArgs* args) {
 
         node->packet->encode();
 
-        node->packet->print();
+        //node->packet->print();
         //std::cout<<node->packet->header->dataLength<<std::endl;
         if(send(args->socket, (node->packet)->message,
         	    HEADER_SIZE + (node->packet->header)->dataLength, 0) <0) {
@@ -274,13 +276,13 @@ void receive_data(recvArgs* args) {
       puts("Received failed");
       exit(1);
     }
-    std::cout<<"get data"<<std::endl;
+    //std::cout<<"get data"<<std::endl;
     //printLog(false, &header);
 
     Packet* packet = new Packet(incoming_message);
     Node *node = new Node(packet, false);
 
-    node->packet->print();
+    //node->packet->print();
     Header* h = node->packet->header;
     if(args->isServer)
       std::cout<<"Receiving packet "<<h->ackNum;
@@ -304,12 +306,19 @@ void check_timeout(sendArgs* args) {
         auto it = args->time_queue.begin();
         //std::cout<<(*it)->timestamp <<", "<< gettime()<<std::endl;
         if((*it)->timestamp < gettime()) {
-          std::cout<<"time_out!!!!!!!!!!!!!!!!!!!!\nseq:"<<(*it)->packet->header->segmentNum<<std::endl;
+          //std::cout<<"time_out!!!!!!!!!!!!!!!!!!!!\nseq:"<<(*it)->packet->header->segmentNum<<std::endl;
           Node* node = (*it);
           node->retransmittime += 1;
-          if (node->retransmittime > 4 && node->packet->header->isFin && args->isServer) {
-            std::cout<<"Fin time out at server"<<std::endl;
+          if (node->retransmittime > RETRANSMITTIME) {
+            //std::cout<<"retransmit time out"<<std::endl;
             args->time_queue.erase(it);
+            if (!args->isServer)
+              args->isRunning = false;
+          }
+          else if (node->retransmittime > 4 && node->packet->header->isFin && !args->isServer) {
+            std::cout<<"Fin time out at client"<<std::endl;
+            args->time_queue.erase(it);
+            args->isRunning = false;
           }
           else {
             args->send_queue.push(node);
@@ -330,19 +339,19 @@ bool checkBuffer(sendArgs* args, Node* node)
   //if (header->isAck)
   //  return false;
   args->lock.lock();
-    std::cout<<"time q size"<<args->time_queue.size()<<std::endl;
+    //std::cout<<"time q size"<<args->time_queue.size()<<std::endl;
     auto it1 = args->time_queue.begin();
     while (it1 != args->time_queue.end() &&
-         (*it1)->packet->header->segmentNum + (*it1)->packet->header->dataLength != header->ackNum) {
+         ((*it1)->packet->header->segmentNum + (*it1)->packet->header->dataLength)%MAX_SEGMENT_NUMBER != header->ackNum) {
       it1++;
     }
     if (it1 != args->time_queue.end()) {
-      std::cout<<"erase!!!!\nack:"<<header->ackNum<<" eliminate seq:"<<(*it1)->packet->header->segmentNum<<std::endl;
+      //std::cout<<"erase!!!!\nack:"<<header->ackNum<<" eliminate seq:"<<(*it1)->packet->header->segmentNum<<std::endl;
       delete *it1;
       args->time_queue.erase(it1);
       //std::cout<<"after erase"<<std::endl;
     }
-    std::cout<<"after process time q size"<<args->time_queue.size()<<std::endl;
+    //std::cout<<"after process time q size"<<args->time_queue.size()<<std::endl;
   args->lock.unlock();
   return true;
 
@@ -354,4 +363,20 @@ long long gettime() {
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // caculate milliseconds
     // printf("milliseconds: %lld\n", milliseconds);
     return milliseconds;
+}
+
+bool lessthan(count c1, count c2) {
+  if (c1 == c2) return false;
+  if (c2 >= (MAX_SEGMENT_NUMBER/2))
+    return c1<c2 && c1 >= (c2-(MAX_SEGMENT_NUMBER/2));
+  if (c2 < (MAX_SEGMENT_NUMBER/2))
+    return !(c1>c2 && c1 <= (c2+(MAX_SEGMENT_NUMBER/2)));
+}
+
+bool greaterthan(count c1, count c2) {
+  if (c1 == c2) return false;
+  if (c2 >= (MAX_SEGMENT_NUMBER/2))
+    return !(c1<c2 && c1 >= (c2-(MAX_SEGMENT_NUMBER/2)));
+  if (c2 < (MAX_SEGMENT_NUMBER/2))
+    return c1>c2 && c1 <= (c2+(MAX_SEGMENT_NUMBER/2));
 }
