@@ -319,7 +319,7 @@ void check_timeout(sendArgs* args) {
             if (!args->isServer)
               args->isRunning = false;
           }
-          else if (node->retransmittime > 4 && node->packet->header->isFin && !args->isServer) {
+          else if (node->retransmittime > FINRETRANSMITTIME && node->packet->header->isFin && !args->isServer) {
             std::cout<<"Fin time out at client"<<std::endl;
             args->time_queue.erase(it);
             args->isRunning = false;

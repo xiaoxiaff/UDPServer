@@ -24,6 +24,7 @@
 #define PACKET_LENGTH 1024
 
 #define RETRANSMITTIME 50
+#define FINRETRANSMITTIME 10
 #define CLIENTPORT 8081
 
 typedef unsigned int count;
