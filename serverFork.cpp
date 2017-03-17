@@ -218,7 +218,7 @@ int main(int argc, char *argv[])
         id_filesize[header->initID] = fileSize;
         id_sendbase[header->initID] = header->ackNum;
         id_nextsegment[header->initID] = header->ackNum;
-        id_offset[header->initID] = header->ackNum;
+        id_offset[header->initID] = 0;
       }
 
       //std::cout<<"after filename"<<std::endl;
@@ -254,9 +254,7 @@ int main(int argc, char *argv[])
                                     (header->segmentNum + header->dataLength) % MAX_SEGMENT_NUMBER,
                                     header->window);
 
-        size_t length = fileRead(pf,
-          (id_nextsegment[header->initID] - id_offset[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER,
-          packet->message);
+        size_t length = fileRead(pf, id_offset[header->initID], packet->message);
         //std::cout<<"------"<<id_nextsegment[header->initID]<<", "<<id_offset[header->initID]<<", "<< id_sendbase[header->initID] << ", " <<
         //(id_nextsegment[header->initID] - id_offset[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER<<", "<<
         //(id_nextsegment[header->initID] + length - id_sendbase[header->initID] + MAX_SEGMENT_NUMBER) % MAX_SEGMENT_NUMBER<<std::endl;
@@ -277,6 +275,7 @@ int main(int argc, char *argv[])
           buffernode->isAcked = false;
           buffer.push_back(buffernode);
           id_nextsegment[header->initID] = (id_nextsegment[header->initID] + length ) % MAX_SEGMENT_NUMBER;
+          id_offset[header->initID] += length;
           sendPacket(&send_args, packet, true);
         }
       }
